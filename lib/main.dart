@@ -685,10 +685,8 @@ class _ProductListScreenState extends State<ProductListScreen> {
         .map((p) => p.product.id)
         .toSet();
 
-    // 1. Obtener el contexto responsivo
     final responsive = ResponsiveBreakpoints.of(context);
 
-    // 2. Definir valores basados en Breakpoints
     int crossAxisCount;
     double childAspectRatio;
 
@@ -697,10 +695,10 @@ class _ProductListScreenState extends State<ProductListScreen> {
       childAspectRatio = 0.55;
     } else if (responsive.isTablet) {
       crossAxisCount = 3;
-      childAspectRatio = 0.65;
+      childAspectRatio = 0.58;
     } else {
       crossAxisCount = 4;
-      childAspectRatio = 0.80;
+      childAspectRatio = 0.70;
     }
 
     return Scaffold(
@@ -936,8 +934,7 @@ class ProductCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
 
-                      const SizedBox(height: 3),
-
+                      const SizedBox(height: 1),
                       Text(
                         'Código: ${product.code}',
                         style: const TextStyle(
@@ -955,8 +952,7 @@ class ProductCard extends StatelessWidget {
                         ),
                       ),
 
-                      const SizedBox(height: 5),
-
+                      const SizedBox(height: 4),
                       FittedBox(
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerLeft,
