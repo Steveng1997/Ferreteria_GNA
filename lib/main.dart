@@ -140,7 +140,6 @@ class _SplashScreenState extends State<SplashScreen> {
             Icon(Icons.business, size: 100, color: Colors.blue),
             SizedBox(height: 20),
             CircularProgressIndicator(color: Colors.blue),
-            SizedBox(height: 10),
             Text('Ferretería GNA', style: TextStyle(fontSize: 24)),
           ],
         ),
@@ -648,6 +647,9 @@ class _ProductListScreenState extends State<ProductListScreen> {
                       }
                       _updateProductInList(updatedProduct);
                     }
+                    setState(
+                      () => _selectedProducts = [],
+                    ); // Limpiar la selección después de editar
                   }
                 : null,
           ),
@@ -692,13 +694,13 @@ class _ProductListScreenState extends State<ProductListScreen> {
 
     if (responsive.isMobile) {
       crossAxisCount = 2;
-      childAspectRatio = 0.70;
+      childAspectRatio = 0.55;
     } else if (responsive.isTablet) {
       crossAxisCount = 3;
-      childAspectRatio = 0.85;
+      childAspectRatio = 0.65;
     } else {
       crossAxisCount = 4;
-      childAspectRatio = 1.0;
+      childAspectRatio = 0.80;
     }
 
     return Scaffold(
@@ -760,33 +762,39 @@ class _ProductListScreenState extends State<ProductListScreen> {
                                 product.id,
                               );
 
-                              return ProductCard(
-                                product: product,
-                                getPublicImageUrl: getPublicImageUrl,
-                                isSelected: isSelected,
-                                onLongPress: () => _toggleSelection(product),
-                                onEdit: () async {
-                                  final Product? updatedProduct =
-                                      await Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (context) =>
-                                              ProductFormScreen(
-                                                product: product,
-                                              ),
-                                        ),
-                                      );
-                                  if (updatedProduct != null) {
-                                    if (updatedProduct.imageUrl != null) {
-                                      CachedNetworkImage.evictFromCache(
-                                        getPublicImageUrl(
-                                          updatedProduct.imageUrl!,
-                                        ),
-                                      );
-                                    }
-                                    _updateProductInList(updatedProduct);
-                                  }
+                              return LayoutBuilder(
+                                builder: (context, constraints) {
+                                  return ProductCard(
+                                    product: product,
+                                    getPublicImageUrl: getPublicImageUrl,
+                                    isSelected: isSelected,
+                                    onLongPress: () =>
+                                        _toggleSelection(product),
+                                    onEdit: () async {
+                                      final Product? updatedProduct =
+                                          await Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  ProductFormScreen(
+                                                    product: product,
+                                                  ),
+                                            ),
+                                          );
+                                      if (updatedProduct != null) {
+                                        if (updatedProduct.imageUrl != null) {
+                                          CachedNetworkImage.evictFromCache(
+                                            getPublicImageUrl(
+                                              updatedProduct.imageUrl!,
+                                            ),
+                                          );
+                                        }
+                                        _updateProductInList(updatedProduct);
+                                      }
+                                    },
+                                    onDelete: () => _deleteProduct(product),
+                                    cardWidth: constraints.maxWidth,
+                                  );
                                 },
-                                onDelete: () => _deleteProduct(product),
                               );
                             },
                           ),
@@ -820,6 +828,7 @@ class ProductCard extends StatelessWidget {
   final VoidCallback onLongPress;
   final Future<void> Function() onEdit;
   final VoidCallback onDelete;
+  final double cardWidth;
 
   const ProductCard({
     super.key,
@@ -829,6 +838,7 @@ class ProductCard extends StatelessWidget {
     required this.onLongPress,
     required this.onEdit,
     required this.onDelete,
+    required this.cardWidth,
   });
 
   void _navigateToEdit(BuildContext context) {
@@ -851,8 +861,7 @@ class ProductCard extends StatelessWidget {
         : null;
 
     final bool outOfStock = product.quantity <= 0;
-
-    final double imageSectionHeight = MediaQuery.of(context).size.width * 0.40;
+    final double imageSectionHeight = cardWidth * 0.50;
 
     return GestureDetector(
       onLongPress: onLongPress,
@@ -911,60 +920,58 @@ class ProductCard extends StatelessWidget {
                   ),
                 ),
 
-                Flexible(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(8.0, 6.0, 8.0, 8.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          product.name,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8.0, 6.0, 8.0, 8.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        product.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 19,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+
+                      const SizedBox(height: 3),
+
+                      Text(
+                        'Código: ${product.code}',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          color: Colors.grey,
+                        ),
+                      ),
+
+                      Text(
+                        'Stock: ${product.quantity}',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: outOfStock ? Colors.red : Colors.green,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+
+                      const SizedBox(height: 5),
+
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          ProductListScreen.currencyFormat.format(
+                            product.price,
+                          ),
                           style: const TextStyle(
+                            color: Colors.green,
                             fontWeight: FontWeight.bold,
-                            fontSize: 19,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-
-                        const SizedBox(height: 3),
-
-                        Text(
-                          'Código: ${product.code}',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            color: Colors.grey,
+                            fontSize: 24,
                           ),
                         ),
-
-                        Text(
-                          'Stock: ${product.quantity}',
-                          style: TextStyle(
-                            fontSize: 18,
-                            color: outOfStock ? Colors.red : Colors.green,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-
-                        const SizedBox(height: 5),
-
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            ProductListScreen.currencyFormat.format(
-                              product.price,
-                            ),
-                            style: const TextStyle(
-                              color: Colors.green,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 24,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -1142,7 +1149,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
           }
 
           img.Image resizedImage = originalImage;
-          // Redimensionar si el ancho es mayor a 800px para ahorrar espacio
+          // Redimensionar si el ancho es mayor a 800px
           if (originalImage.width > 800) {
             resizedImage = img.copyResize(originalImage, width: 800);
           }
