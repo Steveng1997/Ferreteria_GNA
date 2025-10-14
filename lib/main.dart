@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:logger/logger.dart';
 import 'package:intl/intl.dart';
+import 'package:image/image.dart' as img;
 import 'package:cached_network_image/cached_network_image.dart';
 
 // -----------------------------------------------------------------------------
@@ -711,59 +712,69 @@ class _ProductListScreenState extends State<ProductListScreen> {
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : _products.isEmpty
-                ? Center(
-                    child: Text(
-                      _searchQuery.isEmpty
-                          ? 'No hay productos en la base de datos.'
-                          : 'No se encontraron productos con el término "$_searchQuery".',
-                      style: const TextStyle(fontSize: 20, color: Colors.grey),
-                      textAlign: TextAlign.center,
-                    ),
-                  )
-                : GridView.builder(
-                    padding: const EdgeInsets.all(8),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
-                          childAspectRatio: 0.55,
-                        ),
-                    itemCount: _products.length,
-                    itemBuilder: (context, index) {
-                      final product = _products[index];
-                      final isSelected = selectedProductIds.contains(
-                        product.id,
-                      );
-
-                      return ProductCard(
-                        product: product,
-                        getPublicImageUrl: getPublicImageUrl,
-                        isSelected: isSelected,
-                        onLongPress: () => _toggleSelection(product),
-                        onEdit: () async {
-                          final Product? updatedProduct =
-                              await Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (context) =>
-                                      ProductFormScreen(product: product),
+                : RefreshIndicator(
+                    onRefresh: _fetchProducts,
+                    child: _products.isEmpty
+                        ? Center(
+                            child: Text(
+                              _searchQuery.isEmpty
+                                  ? 'No hay productos en la base de datos.'
+                                  : 'No se encontraron productos con el término "$_searchQuery".',
+                              style: const TextStyle(
+                                fontSize: 20,
+                                color: Colors.grey,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          )
+                        : GridView.builder(
+                            padding: const EdgeInsets.all(8),
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 2,
+                                  crossAxisSpacing: 10,
+                                  mainAxisSpacing: 10,
+                                  childAspectRatio: 0.55,
                                 ),
+                            itemCount: _products.length,
+                            itemBuilder: (context, index) {
+                              final product = _products[index];
+                              final isSelected = selectedProductIds.contains(
+                                product.id,
                               );
-                          if (updatedProduct != null) {
-                            // ✅ LIMPIAR CACHÉ: Si la imagen se actualizó, forzamos la recarga del caché.
-                            if (updatedProduct.imageUrl != null) {
-                              CachedNetworkImage.evictFromCache(
-                                getPublicImageUrl(updatedProduct.imageUrl!),
+
+                              return ProductCard(
+                                product: product,
+                                getPublicImageUrl: getPublicImageUrl,
+                                isSelected: isSelected,
+                                onLongPress: () => _toggleSelection(product),
+                                onEdit: () async {
+                                  final Product? updatedProduct =
+                                      await Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              ProductFormScreen(
+                                                product: product,
+                                              ),
+                                        ),
+                                      );
+                                  if (updatedProduct != null) {
+                                    if (updatedProduct.imageUrl != null) {
+                                      CachedNetworkImage.evictFromCache(
+                                        getPublicImageUrl(
+                                          updatedProduct.imageUrl!,
+                                        ),
+                                      );
+                                    }
+                                    _updateProductInList(
+                                      updatedProduct,
+                                    ); // Actualiza localmente
+                                  }
+                                },
+                                onDelete: () => _deleteProduct(product),
                               );
-                            }
-                            _updateProductInList(updatedProduct);
-                          }
-                          // ✅ Pasar función de eliminación
-                        },
-                        onDelete: () => _deleteProduct(product),
-                      );
-                    },
+                            },
+                          ),
                   ),
           ),
         ],
@@ -774,7 +785,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
             MaterialPageRoute(builder: (context) => const ProductFormScreen()),
           );
           if (newProduct != null) {
-            _addProductToList(newProduct);
+            _addProductToList(newProduct); // Añade localmente
           }
         },
         child: const Icon(Icons.add),
@@ -1115,13 +1126,25 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
         newFileName = '${DateTime.now().microsecondsSinceEpoch}.$fileExtension';
 
         try {
-          final bytes = await _image!.readAsBytes();
+          final rawBytes = await _image!.readAsBytes();
+          final originalImage = img.decodeImage(rawBytes);
+
+          if (originalImage == null) {
+            throw Exception('No se pudo decodificar la imagen.');
+          }
+
+          img.Image resizedImage = originalImage;
+          if (originalImage.width > 800) {
+            resizedImage = img.copyResize(originalImage, width: 800);
+          }
+
+          final compressedBytes = img.encodeJpg(resizedImage, quality: 85);
 
           await supabase.storage
               .from(ProductListScreen.bucketName)
               .uploadBinary(
                 newFileName,
-                bytes,
+                compressedBytes,
                 fileOptions: const FileOptions(
                   cacheControl: '3600',
                   upsert: true,
