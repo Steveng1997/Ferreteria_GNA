@@ -1,11 +1,13 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:logger/logger.dart';
 import 'package:intl/intl.dart';
-import 'package:image/image.dart' as img;
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:image/image.dart' as img;
+import 'package:responsive_framework/responsive_framework.dart';
 
 // -----------------------------------------------------------------------------
 // 1. Inicialización y Constantes Globales
@@ -91,6 +93,17 @@ class MyApp extends StatelessWidget {
           ),
         ),
       ),
+
+      // 🚨 Implementación de Responsive Framework 🚨
+      builder: (context, child) => ResponsiveBreakpoints.builder(
+        child: child!,
+        breakpoints: [
+          const Breakpoint(start: 0, end: 450, name: MOBILE),
+          const Breakpoint(start: 451, end: 800, name: TABLET),
+          const Breakpoint(start: 801, end: 1920, name: DESKTOP),
+        ],
+      ),
+
       home: const SplashScreen(),
     );
   }
@@ -254,20 +267,19 @@ class _ProductListScreenState extends State<ProductListScreen> {
   void _addProductToList(Product newProduct) {
     setState(() {
       _allProducts.add(newProduct);
-      _filterProducts(); // Re-filtra y re-ordena la lista visible
+      _filterProducts();
     });
   }
 
   void _updateProductInList(Product updatedProduct) {
     setState(() {
-      // 1. Actualiza en la lista de todos los productos
       final allIndex = _allProducts.indexWhere(
         (p) => p.id == updatedProduct.id,
       );
       if (allIndex != -1) {
         _allProducts[allIndex] = updatedProduct;
       }
-      // 2. Actualiza en la lista de productos seleccionados (stock y precio)
+
       final selectedIndex = _selectedProducts.indexWhere(
         (sp) => sp.product.id == updatedProduct.id,
       );
@@ -277,7 +289,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
           quantityToSell: _selectedProducts[selectedIndex].quantityToSell,
         );
       }
-      // 3. Re-filtra la lista visible
+
       _filterProducts();
     });
   }
@@ -342,7 +354,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
 
     try {
       await Future.wait(inventoryUpdates);
-
       await supabase.from('sales_GNA').insert(saleInserts);
 
       if (mounted) {
@@ -356,6 +367,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
         );
       }
 
+      // Actualización LOCAL de stock
       for (var soldP in _selectedProducts) {
         final newQuantity = soldP.product.quantity - soldP.quantityToSell;
         final updatedProduct = Product(
@@ -384,7 +396,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
     }
   }
 
-  // ✅ MODIFICACIÓN: Elimina el producto y su imagen asociada, y actualiza LOCALMENTE
   Future<void> _deleteProduct(Product product) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -409,24 +420,20 @@ class _ProductListScreenState extends State<ProductListScreen> {
     if (confirmed == true) {
       setState(() => _isLoading = true);
       try {
-        // 1. Eliminar la imagen del Storage (si existe)
         if (product.imageUrl != null && product.imageUrl!.isNotEmpty) {
           await supabase.storage.from(ProductListScreen.bucketName).remove([
             product.imageUrl!,
           ]);
         }
 
-        // 2. Eliminar el registro de la base de datos
         await supabase.from('ferreteria_GNA').delete().eq('id', product.id);
 
-        // 3. ✅ ELIMINACIÓN LOCAL
         setState(() {
           _allProducts.removeWhere((p) => p.id == product.id);
           _selectedProducts.removeWhere((sp) => sp.product.id == product.id);
-          _filterProducts(); // Re-filtra la lista visible
+          _filterProducts();
         });
 
-        // 4. ✅ LIMPIAR CACHÉ: Eliminar la imagen del caché local para asegurar que no se muestre más
         if (product.imageUrl != null && product.imageUrl!.isNotEmpty) {
           CachedNetworkImage.evictFromCache(
             getPublicImageUrl(product.imageUrl!),
@@ -626,8 +633,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
             onPressed: _selectedProducts.length == 1
                 ? () async {
                     final productToEdit = _selectedProducts.first.product;
-                    // ✅ OPTIMIZACIÓN: Esperar resultado para actualizar localmente
-
                     final Product? updatedProduct = await Navigator.of(context)
                         .push(
                           MaterialPageRoute(
@@ -635,8 +640,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
                                 ProductFormScreen(product: productToEdit),
                           ),
                         );
-
-                    // LIMPIAR CACHÉ: Si la imagen se actualizó (o el producto se actualizó), forzamos la recarga del caché.
                     if (updatedProduct != null) {
                       if (updatedProduct.imageUrl != null) {
                         CachedNetworkImage.evictFromCache(
@@ -659,7 +662,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
           style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
         ),
       ),
-      // ✅ ACCIÓN AÑADIDA: Botón para historial de ventas
       actions: [
         IconButton(
           icon: const Icon(Icons.history_toggle_off),
@@ -680,6 +682,24 @@ class _ProductListScreenState extends State<ProductListScreen> {
     final selectedProductIds = _selectedProducts
         .map((p) => p.product.id)
         .toSet();
+
+    // 1. Obtener el contexto responsivo
+    final responsive = ResponsiveBreakpoints.of(context);
+
+    // 2. Definir valores basados en Breakpoints
+    int crossAxisCount;
+    double childAspectRatio;
+
+    if (responsive.isMobile) {
+      crossAxisCount = 2;
+      childAspectRatio = 0.70;
+    } else if (responsive.isTablet) {
+      crossAxisCount = 3;
+      childAspectRatio = 0.85;
+    } else {
+      crossAxisCount = 4;
+      childAspectRatio = 1.0;
+    }
 
     return Scaffold(
       appBar: _appBar,
@@ -703,9 +723,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
                   horizontal: 10,
                 ),
               ),
-              onChanged: (value) {
-                // El listener maneja el cambio
-              },
             ),
           ),
 
@@ -730,11 +747,11 @@ class _ProductListScreenState extends State<ProductListScreen> {
                         : GridView.builder(
                             padding: const EdgeInsets.all(8),
                             gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 2,
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: crossAxisCount,
                                   crossAxisSpacing: 10,
                                   mainAxisSpacing: 10,
-                                  childAspectRatio: 0.55,
+                                  childAspectRatio: childAspectRatio,
                                 ),
                             itemCount: _products.length,
                             itemBuilder: (context, index) {
@@ -766,9 +783,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                                         ),
                                       );
                                     }
-                                    _updateProductInList(
-                                      updatedProduct,
-                                    ); // Actualiza localmente
+                                    _updateProductInList(updatedProduct);
                                   }
                                 },
                                 onDelete: () => _deleteProduct(product),
@@ -785,7 +800,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
             MaterialPageRoute(builder: (context) => const ProductFormScreen()),
           );
           if (newProduct != null) {
-            _addProductToList(newProduct); // Añade localmente
+            _addProductToList(newProduct);
           }
         },
         child: const Icon(Icons.add),
@@ -836,6 +851,7 @@ class ProductCard extends StatelessWidget {
         : null;
 
     final bool outOfStock = product.quantity <= 0;
+
     final double imageSectionHeight = MediaQuery.of(context).size.width * 0.40;
 
     return GestureDetector(
@@ -855,7 +871,6 @@ class ProductCard extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // ZONA DE IMAGEN
                 GestureDetector(
                   onTap: () {
                     if (imageUrl != null) {
@@ -876,7 +891,7 @@ class ProductCard extends StatelessWidget {
                                   strokeWidth: 2,
                                 ),
                               ),
-                              errorWidget: (context, url, stackTrace) =>
+                              errorWidget: (context, url, error) =>
                                   const Center(
                                     child: Icon(
                                       Icons.broken_image,
@@ -896,16 +911,13 @@ class ProductCard extends StatelessWidget {
                   ),
                 ),
 
-                // ZONA DE TEXTO DINÁMICO Y COMPACTO
                 Flexible(
-                  // Permite que el texto se ajuste a 1 o 2 líneas sin overflow.
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(8.0, 6.0, 8.0, 8.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // 1. NOMBRE
                         Text(
                           product.name,
                           style: const TextStyle(
@@ -918,7 +930,6 @@ class ProductCard extends StatelessWidget {
 
                         const SizedBox(height: 3),
 
-                        // 2. CODIGO
                         Text(
                           'Código: ${product.code}',
                           style: const TextStyle(
@@ -927,7 +938,6 @@ class ProductCard extends StatelessWidget {
                           ),
                         ),
 
-                        // 3. STOCK
                         Text(
                           'Stock: ${product.quantity}',
                           style: TextStyle(
@@ -939,7 +949,6 @@ class ProductCard extends StatelessWidget {
 
                         const SizedBox(height: 5),
 
-                        // 4. PRECIO
                         FittedBox(
                           fit: BoxFit.scaleDown,
                           alignment: Alignment.centerLeft,
@@ -961,7 +970,6 @@ class ProductCard extends StatelessWidget {
               ],
             ),
 
-            // Indicadores de selección y Stock
             if (isSelected)
               Positioned(
                 top: 5,
@@ -972,7 +980,6 @@ class ProductCard extends StatelessWidget {
                   child: const Icon(Icons.check, size: 16, color: Colors.white),
                 ),
               )
-            // ✅ BOTÓN ELIMINAR
             else
               Positioned(
                 top: 0,
@@ -1035,7 +1042,7 @@ class ImageViewScreen extends StatelessWidget {
             placeholder: (context, url) => const Center(
               child: CircularProgressIndicator(color: Colors.white),
             ),
-            errorWidget: (context, url, stackTrace) => const Center(
+            errorWidget: (context, url, error) => const Center(
               child: Icon(Icons.broken_image, size: 100, color: Colors.red),
             ),
           ),
@@ -1126,6 +1133,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
         newFileName = '${DateTime.now().microsecondsSinceEpoch}.$fileExtension';
 
         try {
+          // ⚙️ INICIO: LÓGICA DE REDIMENSIONAMIENTO ⚙️
           final rawBytes = await _image!.readAsBytes();
           final originalImage = img.decodeImage(rawBytes);
 
@@ -1134,11 +1142,14 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
           }
 
           img.Image resizedImage = originalImage;
+          // Redimensionar si el ancho es mayor a 800px para ahorrar espacio
           if (originalImage.width > 800) {
             resizedImage = img.copyResize(originalImage, width: 800);
           }
 
+          // Comprimir a JPEG con calidad 85
           final compressedBytes = img.encodeJpg(resizedImage, quality: 85);
+          // ⚙️ FIN: LÓGICA DE REDIMENSIONAMIENTO ⚙️
 
           await supabase.storage
               .from(ProductListScreen.bucketName)
@@ -1268,6 +1279,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                       validator: (value) =>
                           value!.isEmpty ? 'Ingresa un nombre' : null,
                     ),
+
                     TextFormField(
                       controller: _codeController,
                       decoration: const InputDecoration(
@@ -1280,6 +1292,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                         if (value!.isEmpty) {
                           return 'Ingresa el código';
                         }
+
                         if (int.tryParse(value) == null) {
                           return 'Debe ser un número entero';
                         }
@@ -1287,6 +1300,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                         return null;
                       },
                     ),
+
                     TextFormField(
                       controller: _quantityController,
                       decoration: const InputDecoration(
@@ -1366,7 +1380,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
         fit: BoxFit.cover,
         placeholder: (context, url) =>
             const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-        errorWidget: (context, url, stackTrace) => const Center(
+        errorWidget: (context, url, error) => const Center(
           child: Icon(Icons.broken_image, size: 50, color: Colors.red),
         ),
       );
