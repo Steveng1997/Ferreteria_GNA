@@ -692,13 +692,16 @@ class _ProductListScreenState extends State<ProductListScreen> {
 
     if (responsive.isMobile) {
       crossAxisCount = 2;
-      childAspectRatio = 0.55;
+      // 🚨 AJUSTE FINAL 1: 0.55 (Móvil) - Compacto, resuelve el espacio de sobra.
+      childAspectRatio = 0.70;
     } else if (responsive.isTablet) {
       crossAxisCount = 3;
-      childAspectRatio = 0.58;
+      // 🚨 AJUSTE FINAL 2: 0.58 (Tablet) - Le da más altura para el texto de dos líneas, junto con la reducción de fuente.
+      childAspectRatio = 0.65;
     } else {
       crossAxisCount = 4;
-      childAspectRatio = 0.70;
+      // Ajuste para 4 columnas.
+      childAspectRatio = 0.76;
     }
 
     return Scaffold(
@@ -859,6 +862,15 @@ class ProductCard extends StatelessWidget {
         : null;
 
     final bool outOfStock = product.quantity <= 0;
+
+    // Obtener el contexto responsivo
+    final responsive = ResponsiveBreakpoints.of(context);
+
+    // 🚨 AJUSTE CLAVE: Reducir el tamaño del nombre cuando hay más columnas (tablet/desktop)
+    // El modo móvil vertical (2 columnas) sigue con 19pt; Tablet/Horizontal (3+ columnas) baja a 17pt.
+    final double nameFontSize = responsive.isMobile ? 19 : 17;
+
+    // Altura de la imagen reducida al 50% del ancho para maximizar espacio de texto
     final double imageSectionHeight = cardWidth * 0.50;
 
     return GestureDetector(
@@ -926,9 +938,9 @@ class ProductCard extends StatelessWidget {
                     children: [
                       Text(
                         product.name,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontSize: 19,
+                          fontSize: nameFontSize,
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -1421,7 +1433,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
     try {
       final List<Map<String, dynamic>> data = await supabase
           .from('sales_GNA')
-          .select('name, quantity, price, total, created_at')
+          .select('id, name, quantity, price, total, created_at')
           .order('created_at', ascending: false);
 
       _sales = data;
