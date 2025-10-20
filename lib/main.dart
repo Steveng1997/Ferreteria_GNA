@@ -693,7 +693,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
     if (responsive.isMobile) {
       crossAxisCount = 2;
       // 🚨 AJUSTE FINAL 1: 0.55 (Móvil) - Compacto, resuelve el espacio de sobra.
-      childAspectRatio = 0.70;
+      childAspectRatio = 0.74;
     } else if (responsive.isTablet) {
       crossAxisCount = 3;
       // 🚨 AJUSTE FINAL 2: 0.58 (Tablet) - Le da más altura para el texto de dos líneas, junto con la reducción de fuente.
@@ -866,8 +866,7 @@ class ProductCard extends StatelessWidget {
     // Obtener el contexto responsivo
     final responsive = ResponsiveBreakpoints.of(context);
 
-    // 🚨 AJUSTE CLAVE: Reducir el tamaño del nombre cuando hay más columnas (tablet/desktop)
-    // El modo móvil vertical (2 columnas) sigue con 19pt; Tablet/Horizontal (3+ columnas) baja a 17pt.
+    // Reducir el tamaño del nombre cuando hay más columnas (tablet/desktop)
     final double nameFontSize = responsive.isMobile ? 19 : 17;
 
     // Altura de la imagen reducida al 50% del ancho para maximizar espacio de texto
@@ -1451,6 +1450,62 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
     }
   }
 
+  // 🚨 FUNCIÓN PARA ELIMINAR UNA VENTA
+  Future<void> _deleteSale(int saleId, String saleName) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirmar Eliminación de Venta'),
+        content: Text(
+          '¿Estás seguro de que quieres eliminar la venta de "${saleName}"? Esta acción no se puede deshacer.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      setState(() => _isLoading = true);
+      try {
+        // Eliminar de la tabla sales_GNA usando el ID
+        await supabase.from('sales_GNA').delete().eq('id', saleId);
+
+        setState(() {
+          // Actualizar la lista local
+          _sales.removeWhere((sale) => sale['id'] == saleId);
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Venta de "${saleName}" eliminada con éxito.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      } on PostgrestException catch (e) {
+        logger.e('Error al eliminar la venta: ${e.message}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error DB al eliminar: ${e.message}')),
+          );
+        }
+      } catch (e) {
+        logger.e('Error desconocido al eliminar venta: $e');
+      } finally {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
   String _formatDate(String isoDate) {
     try {
       final DateTime date = DateTime.parse(isoDate).toLocal();
@@ -1482,6 +1537,8 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
               separatorBuilder: (context, index) => const Divider(height: 1),
               itemBuilder: (context, index) {
                 final sale = _sales[index];
+                final int saleId = sale['id']; // ⬅️ OBTENEMOS EL ID
+                final String saleName = sale['name'];
                 final String formattedPrice = ProductListScreen.currencyFormat
                     .format(sale['price']);
                 final String formattedTotal = ProductListScreen.currencyFormat
@@ -1500,7 +1557,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                     ),
                   ),
                   title: Text(
-                    sale['name'],
+                    saleName,
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
@@ -1512,21 +1569,35 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                     'Precio Unitario: $formattedPrice\nFecha: $formattedDate',
                     style: const TextStyle(color: Colors.grey),
                   ),
-                  trailing: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text(
-                        'TOTAL',
-                        style: TextStyle(fontSize: 12, color: Colors.green),
-                      ),
-                      Text(
-                        formattedTotal,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          color: Colors.green,
+                      // 🚨 BOTÓN DE ELIMINAR VENTA
+                      IconButton(
+                        icon: const Icon(
+                          Icons.delete_forever,
+                          color: Colors.red,
+                          size: 24,
                         ),
+                        onPressed: () => _deleteSale(saleId, saleName),
+                      ),
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          const Text(
+                            'TOTAL',
+                            style: TextStyle(fontSize: 12, color: Colors.green),
+                          ),
+                          Text(
+                            formattedTotal,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                              color: Colors.green,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
